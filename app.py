@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
+import warnings  # 这里补上缺失的导入
 warnings.filterwarnings("ignore")
 
 # ===================== 全局配置 =====================
