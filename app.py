@@ -6,11 +6,13 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
-import warnings  # 这里补上缺失的导入
+import warnings
+from tradingview_ta import TA_Handler, Interval, Exchange
+
 warnings.filterwarnings("ignore")
 
 # ===================== 全局配置 =====================
-st.set_page_config(page_title="Wyckoff+VCP选股器", layout="wide")
+st.set_page_config(page_title="Wyckoff+VCP 多源数据选股器（港/美/A股）", layout="wide")
 # 阿斯达克请求头（防反爬）
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -19,8 +21,59 @@ HEADERS = {
 }
 
 # ===================== 多源数据抓取核心模块 =====================
+def get_tradingview_data(stock_code, days=180):
+    """优先从TradingView抓取日线数据"""
+    try:
+        # 适配TradingView代码格式
+        if ".HK" in stock_code:
+            symbol = stock_code.replace(".HK", "")
+            exchange = Exchange.HKEX
+            screener = "hong_kong"
+        elif ".SS" in stock_code:
+            symbol = stock_code.replace(".SS", "")
+            exchange = Exchange.SSE
+            screener = "china"
+        elif ".SZ" in stock_code:
+            symbol = stock_code.replace(".SZ", "")
+            exchange = Exchange.SZSE
+            screener = "china"
+        else:
+            symbol = stock_code
+            exchange = Exchange.NASDAQ
+            screener = "america"
+
+        handler = TA_Handler(
+            symbol=symbol,
+            exchange=exchange,
+            screener=screener,
+            interval=Interval.INTERVAL_1_DAY,
+            timeout=None
+        )
+        # 获取历史数据
+        df = handler.get_hist(days)
+        if df is None or len(df) < days * 0.8:
+            return None
+        
+        # 数据清洗+标准化
+        df = df.reset_index()
+        df.rename(columns={
+            "datetime": "datetime",
+            "open": "open",
+            "high": "high",
+            "low": "low",
+            "close": "close",
+            "volume": "volume"
+        }, inplace=True)
+        df = df[["datetime", "high", "low", "close", "volume"]].drop_duplicates()
+        df = df.fillna(method="ffill").fillna(method="bfill")
+        
+        return df.tail(days)
+    except Exception as e:
+        st.warning(f"TradingView抓取{stock_code}失败：{str(e)[:30]}")
+        return None
+
 def get_yfinance_data(stock_code, days=180):
-    """优先从Yahoo Finance抓取日线数据"""
+    """备用：从Yahoo Finance抓取日线数据"""
     try:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days + 20)
@@ -91,10 +144,16 @@ def get_aastocks_data(stock_code, days=180):
         return None
 
 def get_stock_data(stock_code, days=180):
-    """统一数据入口：Yahoo失败则用阿斯达克"""
+    """统一数据入口：TradingView → Yahoo → 阿斯达克"""
+    # 1. 优先TradingView
+    df = get_tradingview_data(stock_code, days)
+    if df is not None and len(df) >= days * 0.8:
+        return df
+    # 2. 备用Yahoo
     df = get_yfinance_data(stock_code, days)
     if df is not None and len(df) >= days * 0.8:
         return df
+    # 3. 最后阿斯达克
     df = get_aastocks_data(stock_code, days)
     if df is not None and len(df) >= days * 0.8:
         return df
@@ -197,7 +256,7 @@ def analyze_stock(stock_code, days=180):
 # ===================== Streamlit网页交互 =====================
 def main():
     st.title("🚀 Wyckoff+VCP 多源数据选股器（港/美/A股）")
-    st.markdown("### 数据来源：Yahoo Finance + 阿斯达克（延迟15-30分钟，不影响日线分析）")
+    st.markdown("### 数据来源：TradingView → Yahoo Finance → 阿斯达克（延迟15-30分钟，不影响日线分析）")
     
     # 侧边栏配置
     with st.sidebar:
