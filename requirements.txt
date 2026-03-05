@@ -3,3 +3,4 @@ yfinance>=0.2.31
 pandas>=2.2.0
 numpy>=1.26.4
 requests>=2.31.0
+tradingview-ta>=3.2.10
