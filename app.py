@@ -4,67 +4,213 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+from yahooquery import Screener
 
 # ------------------------------
-# 1. 扩展股票池（覆盖更多个股）
+# 全局配置：缓存优化+页面设置
 # ------------------------------
-# 港股：扩展为恒生综合指数成分股（覆盖更全），后续会自动筛选≥5港元
-HANG_SENG_EXTENDED = [
-    "0700.HK", "9988.HK", "3690.HK", "0005.HK", "0941.HK", "1810.HK",
-    "0016.HK", "0001.HK", "0857.HK", "0388.HK", "1211.HK", "2318.HK",
-    "0027.HK", "1024.HK", "9618.HK", "9888.HK", "2015.HK", "0066.HK",
-    "0175.HK", "0241.HK", "0267.HK", "0288.HK", "0332.HK", "0386.HK",
-    "0688.HK", "0762.HK", "0823.HK", "0836.HK", "0868.HK", "0914.HK",
-    "0960.HK", "0981.HK", "1038.HK", "1044.HK", "1088.HK", "1093.HK",
-    "1109.HK", "1113.HK", "1177.HK", "1299.HK", "1398.HK", "1801.HK",
-    "1818.HK", "1928.HK", "1929.HK", "2007.HK", "2020.HK", "2269.HK",
-    "2313.HK", "2319.HK", "2331.HK", "2382.HK", "2601.HK", "2628.HK",
-    "3328.HK", "3968.HK", "3988.HK", "6098.HK", "6862.HK", "9626.HK",
-    "0012.HK", "0017.HK", "0027.HK", "0066.HK", "0101.HK", "0151.HK",
-    "0175.HK", "0267.HK", "0288.HK", "0332.HK", "0386.HK", "0688.HK",
-    "0762.HK", "0823.HK", "0836.HK", "0868.HK", "0914.HK", "0960.HK",
-    "0981.HK", "1038.HK", "1044.HK", "1088.HK", "1093.HK", "1109.HK",
-    "1113.HK", "1177.HK", "1299.HK", "1398.HK", "1801.HK", "1818.HK",
-    "1928.HK", "1929.HK", "2007.HK", "2020.HK", "2269.HK", "2313.HK",
-    "2319.HK", "2331.HK", "2382.HK", "2601.HK", "2628.HK", "3328.HK",
-    "3968.HK", "3988.HK", "6098.HK", "6862.HK", "9626.HK", "9866.HK",
-    "9898.HK", "9999.HK", "2013.HK", "2015.HK", "2020.HK", "2057.HK",
-    "2158.HK", "2238.HK", "2269.HK", "2313.HK", "2319.HK", "2331.HK",
-    "2382.HK", "2518.HK", "2601.HK", "2628.HK", "3328.HK", "3690.HK",
-    "3968.HK", "3988.HK", "6098.HK", "6862.HK", "9618.HK", "9626.HK",
-    "9866.HK", "9888.HK", "9898.HK", "9988.HK", "9999.HK"
-]
-
-# 美股：标普500+纳指100，后续会自动筛选≥5美元
-SP500_PLUS_NASDAQ = [
-    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA",
-    "BRK-B", "UNH", "JNJ", "JPM", "V", "WMT", "PG", "MA", "HD",
-    "DIS", "NFLX", "PYPL", "BAC", "ADBE", "CRM", "INTC", "VZ",
-    "KO", "PEP", "NKE", "MRK", "T", "PFE", "ABBV", "ABT", "CVX",
-    "XOM", "COST", "MCD", "WFC", "CSCO", "ACN", "DHR", "TXN",
-    "NEE", "LIN", "AMD", "HON", "QCOM", "LOW", "SPGI", "IBM",
-    "GS", "CAT", "BLK", "RTX", "INTU", "AMAT", "GE", "NOW",
-    "DE", "MS", "BKNG", "SCHW", "PLD", "AXP", "TMO", "LRCX",
-    "ISRG", "EL", "MU", "ADP", "ZTS", "C", "MDLZ", "GILD",
-    "CI", "SYK", "TMUS", "TJX", "MMM", "CB", "MO", "CL",
-    "REGN", "BDX", "HUM", "AMGN", "SPG", "EW", "SO", "DUK",
-    # 纳指100新增
-    "AEP", "ALGN", "AMGN", "ADI", "ANSS", "AAPL", "AMAT", "ASML",
-    "TEAM", "ADSK", "ADP", "AZN", "AVGO", "BIDU", "BIIB", "BMRN",
-    "BKNG", "CDNS", "CDW", "CHTR", "CHKP", "CTAS", "CSCO", "CTSH",
-    "CMCSA", "CEG", "CPRT", "CSGP", "COST", "CRWD", "DDOG", "DXCM",
-    "FANG", "DLTR", "DASH", "EA", "EXC", "FAST", "GFS", "META",
-    "FI", "FTNT", "GILD", "GOOG", "GOOGL", "HON", "ILMN", "INTC",
-    "INTU", "ISRG", "JD", "KDP", "KLAC", "KHC", "LRCX", "LULU",
-    "MAR", "MRVL", "MELI", "MCHP", "MU", "MSFT", "MRNA", "MDLZ",
-    "MNST", "NFLX", "NVDA", "NXPI", "ORLY", "ODFL", "ON", "PCAR",
-    "PANW", "PAYX", "PYPL", "PDD", "PEP", "QCOM", "REGN", "ROP",
-    "ROST", "SIRI", "SBUX", "SNPS", "TSLA", "TXN", "TTD", "VRSK",
-    "VRTX", "WBA", "WBD", "WDAY", "XEL", "ZM", "ZS"
-]
+st.set_page_config(page_title="Wyckoff+VCP 全市场选股器", layout="wide")
+st.title("🚀 Wyckoff Method + VCP 全市场选股器")
+st.markdown("自动覆盖港股/美股全市场≥5元个股，按买入匹配度精准排序，左侧选参数一键筛选")
 
 # ------------------------------
-# 2. 核心技术指标（不用改）
+# 新增：买入匹配度得分规则配置（核心）
+# ------------------------------
+SCORE_RULES = {
+    # Wyckoff 信号
+    "弹簧效应": 3.0,
+    "二次测试": 2.5,
+    "上冲下洗": -3.0,
+    # VCP 信号
+    "多次收缩": 3.0,
+    "突破放量": 2.5,
+    "波动率收缩": 1.5,
+    "相对强势": 1.0
+}
+
+# 得分参考说明
+SCORE_GUIDE = """
+📊 得分参考说明：
+- 8分及以上：**强买入信号**，高度贴合Wyckoff+VCP核心买入条件，优先关注
+- 5-7分：**关注信号**，符合基础买入条件，可等待进一步确认
+- 1-4分：**观望信号**，仅符合部分条件，暂不建议买入
+- 0分及以下：**风险信号**，存在见顶派发特征，规避
+"""
+
+# ------------------------------
+# 核心功能1：自动获取全市场符合价格要求的股票代码
+# ------------------------------
+@st.cache_data(ttl=86400)  # 缓存1天，不用每次都重新拉取全市场代码
+def get_full_market_stocks(market, min_price):
+    """
+    自动拉取全市场股票代码，过滤符合最低价格的个股
+    market: 港股/美股
+    min_price: 最低股价（港元/美元）
+    """
+    try:
+        s = Screener()
+        if market == "港股":
+            # 拉取港股全市场所有个股，自动过滤价格≥min_price
+            hk_data = s.get_screeners([
+                "hk_equities",
+                f"price_gte_{int(min_price)}"
+            ], count=5000)  # 最多拉取5000只，覆盖港股全市场
+            symbols = [item["symbol"] for item in hk_data["finance"]["result"][0]["quotes"]]
+            # 确保港股代码后缀正确
+            symbols = [f"{sym.split('.')[0]}.HK" if ".HK" not in sym.upper() else sym for sym in symbols]
+        
+        else:
+            # 拉取美股全市场所有个股，自动过滤价格≥min_price
+            us_data = s.get_screeners([
+                "us_equities",
+                f"price_gte_{int(min_price)}"
+            ], count=10000)  # 最多拉取10000只，覆盖美股全市场
+            symbols = [item["symbol"] for item in us_data["finance"]["result"][0]["quotes"]]
+        
+        # 去重+过滤无效代码
+        symbols = list(set(symbols))
+        symbols = [sym for sym in symbols if sym and "-" not in sym and "^" not in sym]
+        return symbols
+    
+    except Exception as e:
+        # 拉取失败时，用备用扩展股票池兜底，保证能用
+        st.warning(f"全市场代码拉取失败，使用备用扩展股票池，错误：{str(e)}")
+        if market == "港股":
+            return [
+                "0700.HK", "9988.HK", "3690.HK", "0005.HK", "0941.HK", "1810.HK",
+                "0016.HK", "0001.HK", "0857.HK", "0388.HK", "1211.HK", "2318.HK",
+                "0027.HK", "1024.HK", "9618.HK", "9888.HK", "2015.HK", "0066.HK",
+                "0175.HK", "0241.HK", "0267.HK", "0288.HK", "0332.HK", "0386.HK",
+                "0688.HK", "0762.HK", "0823.HK", "0836.HK", "0868.HK", "0914.HK",
+                "0960.HK", "0981.HK", "1038.HK", "1044.HK", "1088.HK", "1093.HK",
+                "1109.HK", "1113.HK", "1177.HK", "1299.HK", "1398.HK", "1801.HK",
+                "1818.HK", "1928.HK", "1929.HK", "2007.HK", "2020.HK", "2269.HK",
+                "2313.HK", "2319.HK", "2331.HK", "2382.HK", "2601.HK", "2628.HK",
+                "3328.HK", "3968.HK", "3988.HK", "6098.HK", "6862.HK", "9626.HK",
+                "9866.HK", "9898.HK", "9999.HK", "2013.HK", "2057.HK", "2158.HK",
+                "2238.HK", "2518.HK", "3888.HK", "6060.HK", "6618.HK", "9696.HK",
+                "9961.HK", "9922.HK", "1816.HK", "0992.HK", "0772.HK", "0291.HK",
+                "0151.HK", "0101.HK", "0012.HK", "0017.HK", "0083.HK", "0144.HK",
+                "0168.HK", "0178.HK", "0200.HK", "0213.HK", "0220.HK", "0241.HK",
+                "0257.HK", "0268.HK", "0270.HK", "0293.HK", "0303.HK", "0330.HK",
+                "0345.HK", "0358.HK", "0388.HK", "0489.HK", "0552.HK", "0588.HK",
+                "0606.HK", "0613.HK", "0656.HK", "0669.HK", "0688.HK", "0700.HK",
+                "0728.HK", "0753.HK", "0763.HK", "0772.HK", "0817.HK", "0823.HK",
+                "0839.HK", "0853.HK", "0857.HK", "0867.HK", "0883.HK", "0902.HK",
+                "0914.HK", "0939.HK", "0941.HK", "0960.HK", "0981.HK", "0992.HK",
+                "0998.HK", "1024.HK", "1038.HK", "1044.HK", "1055.HK", "1060.HK",
+                "1066.HK", "1088.HK", "1093.HK", "1099.HK", "1109.HK", "1112.HK",
+                "1113.HK", "1128.HK", "1157.HK", "1171.HK", "1177.HK", "1186.HK",
+                "1193.HK", "1208.HK", "1211.HK", "1288.HK", "1299.HK", "1336.HK",
+                "1339.HK", "1359.HK", "1378.HK", "1398.HK", "1428.HK", "1513.HK",
+                "1530.HK", "1579.HK", "1658.HK", "1772.HK", "1776.HK", "1787.HK",
+                "1801.HK", "1810.HK", "1816.HK", "1818.HK", "1829.HK", "1876.HK",
+                "1898.HK", "1918.HK", "1928.HK", "1929.HK", "1958.HK", "1963.HK",
+                "1972.HK", "1988.HK", "2007.HK", "2013.HK", "2015.HK", "2020.HK",
+                "2039.HK", "2068.HK", "2128.HK", "2196.HK", "2202.HK", "2238.HK",
+                "2269.HK", "2313.HK", "2318.HK", "2319.HK", "2331.HK", "2333.HK",
+                "2338.HK", "2382.HK", "2388.HK", "2518.HK", "2601.HK", "2607.HK",
+                "2628.HK", "2688.HK", "2777.HK", "2866.HK", "2883.HK", "2899.HK",
+                "3328.HK", "3333.HK", "3606.HK", "3618.HK", "3690.HK", "3808.HK",
+                "3866.HK", "3888.HK", "3900.HK", "3968.HK", "3988.HK", "3993.HK",
+                "6030.HK", "6060.HK", "6098.HK", "6127.HK", "6178.HK", "6185.HK",
+                "6199.HK", "6618.HK", "6690.HK", "6806.HK", "6818.HK", "6823.HK",
+                "6855.HK", "6862.HK", "6881.HK", "6886.HK", "6908.HK", "6969.HK",
+                "9618.HK", "9626.HK", "9633.HK", "9696.HK", "9866.HK", "9868.HK",
+                "9888.HK", "9896.HK", "9898.HK", "9909.HK", "9922.HK", "9939.HK",
+                "9959.HK", "9961.HK", "9987.HK", "9988.HK", "9999.HK"
+            ]
+        else:
+            return [
+                "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA",
+                "BRK-B", "UNH", "JNJ", "JPM", "V", "WMT", "PG", "MA", "HD",
+                "DIS", "NFLX", "PYPL", "BAC", "ADBE", "CRM", "INTC", "VZ",
+                "KO", "PEP", "NKE", "MRK", "T", "PFE", "ABBV", "ABT", "CVX",
+                "XOM", "COST", "MCD", "WFC", "CSCO", "ACN", "DHR", "TXN",
+                "NEE", "LIN", "AMD", "HON", "QCOM", "LOW", "SPGI", "IBM",
+                "GS", "CAT", "BLK", "RTX", "INTU", "AMAT", "GE", "NOW",
+                "DE", "MS", "BKNG", "SCHW", "PLD", "AXP", "TMO", "LRCX",
+                "ISRG", "EL", "MU", "ADP", "ZTS", "C", "MDLZ", "GILD",
+                "CI", "SYK", "TMUS", "TJX", "MMM", "CB", "MO", "CL",
+                "REGN", "BDX", "HUM", "AMGN", "SPG", "EW", "SO", "DUK",
+                "AEP", "ALGN", "AMGN", "ADI", "ANSS", "ASML", "TEAM", "ADSK",
+                "AZN", "AVGO", "BIDU", "BIIB", "BMRN", "CDNS", "CDW", "CHTR",
+                "CHKP", "CTAS", "CTSH", "CMCSA", "CEG", "CPRT", "CSGP", "CRWD",
+                "DDOG", "DXCM", "FANG", "DLTR", "DASH", "EA", "EXC", "FAST",
+                "GFS", "FI", "FTNT", "JD", "KDP", "KLAC", "KHC", "LULU",
+                "MAR", "MRVL", "MELI", "MCHP", "MRNA", "MNST", "NXPI", "ORLY",
+                "ODFL", "ON", "PCAR", "PANW", "PAYX", "PDD", "QCOM", "ROP",
+                "ROST", "SIRI", "SBUX", "SNPS", "TTD", "VRSK", "VRTX", "WBA",
+                "WBD", "WDAY", "XEL", "ZM", "ZS", "ABNB", "CCL", "F", "GM",
+                "RIVN", "LCID", "SNAP", "UBER", "LYFT", "PINS", "ZM", "DOCU",
+                "ROKU", "SPOT", "SQ", "SHOP", "TWLO", "OKTA", "MDB", "DDOG",
+                "CRWD", "NET", "ZS", "PANW", "FTNT", "CYBR", "S", "RKLB",
+                "PLTR", "BB", "NOK", "T", "VZ", "TMUS", "CMCSA", "DIS", "NFLX",
+                "PARA", "WARNER", "LUMN", "AMC", "GME", "BBBY", "KOSS", "EXPR",
+                "W", "DKS", "BBY", "HD", "LOW", "TGT", "COST", "WMT", "DG",
+                "DLTR", "DOLLAR", "FIVE", "ODFL", "XPO", "CHRW", "JBHT", "KNX",
+                "LUV", "DAL", "UAL", "AAL", "ALK", "SAVE", "RCL", "CCL", "NCLH",
+                "MAR", "HLT", "H", "IHG", "WH", "MGM", "WYNN", "LVS", "BYD",
+                "MCK", "CVS", "WBA", "ABC", "CAH", "CI", "UNH", "HUM", "CNC",
+                "MOH", "HCA", "HST", "UHS", "THC", "LPX", "WY", "RYN", "IP",
+                "GPRE", "ADM", "BG", "ANDE", "CF", "MOS", "AGCO", "DE", "CAT",
+                "ETN", "EMR", "ROK", "HON", "GE", "MMM", "ITW", "IR", "DOV",
+                "ROP", "SWK", "SNA", "AOS", "PH", "DHR", "TMO", "ABT", "BSX",
+                "SYK", "ZBH", "MDT", "EW", "BAX", "BDX", "HOLX", "RMD", "VAR",
+                "ISRG", "GMED", "HUM", "UNH", "CI", "CVS", "WBA", "MCK", "ABC",
+                "CAH", "XRAY", "DXCM", "IDXX", "ILMN", "TMO", "DHR", "WAT",
+                "A", "AA", "AAL", "AAP", "AAPL", "ABBV", "ABC", "ABT", "ACN",
+                "ADBE", "ADI", "ADM", "ADP", "ADSK", "AEE", "AEP", "AES", "AFL",
+                "AIG", "AIZ", "AJG", "AKAM", "ALB", "ALGN", "ALK", "ALL", "ALLE",
+                "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", "AMT", "AMZN", "ANET",
+                "ANSS", "AON", "AOS", "APA", "APD", "APH", "APTV", "ARE", "ATO",
+                "AVB", "AVGO", "AVY", "AWK", "AXP", "AZO", "BA", "BAC", "BAX",
+                "BBWI", "BBY", "BDX", "BEN", "BF-B", "BIIB", "BIO", "BK", "BKNG",
+                "BKR", "BLK", "BMY", "BR", "BRK-B", "BSX", "BWA", "BXP", "C",
+                "CAG", "CAH", "CARR", "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL",
+                "CDNS", "CDW", "CE", "CEG", "CF", "CFG", "CHD", "CHRW", "CHTR",
+                "CI", "CINF", "CL", "CLX", "CMA", "CMCSA", "CME", "CMG", "CMI",
+                "CMS", "CNC", "CNP", "COF", "COO", "COP", "COST", "CPB", "CPRT",
+                "CRL", "CRM", "CSCO", "CSGP", "CSX", "CTAS", "CTLT", "CTRA", "CTSH",
+                "CTVA", "CVS", "CVX", "CZR", "D", "DAL", "DD", "DDOG", "DE", "DFS",
+                "DG", "DGX", "DHI", "DHR", "DIS", "DISH", "DLR", "DLTR", "DOV", "DOW",
+                "DPZ", "DRE", "DRI", "DTE", "DUK", "DVA", "DVN", "DXC", "DXCM", "EA",
+                "EBAY", "ECL", "ED", "EFX", "EIX", "EL", "EMN", "EMR", "ENPH", "EOG",
+                "EPAM", "EQIX", "EQR", "ES", "ESS", "ETN", "ETR", "ETSY", "EVRG", "EW",
+                "EXC", "EXPD", "EXPE", "EXR", "F", "FANG", "FAST", "FBHS", "FCX", "FDS",
+                "FDX", "FE", "FFIV", "FIS", "FISV", "FITB", "FLT", "FMC", "FOX", "FOXA",
+                "FRT", "FTNT", "FTV", "GD", "GE", "GEHC", "GEN", "GILD", "GIS", "GL",
+                "GLW", "GM", "GNRC", "GOOG", "GOOGL", "GPC", "GPN", "GRMN", "GS", "GWW",
+                "HAL", "HAS", "HBAN", "HCA", "HD", "HES", "HIG", "HII", "HLT", "HOLX",
+                "HON", "HPE", "HPQ", "HRL", "HSIC", "HST", "HSY", "HUM", "HWM", "IBM",
+                "ICE", "IDXX", "IEX", "IFF", "ILMN", "INCY", "INTC", "INTU", "IP", "IPG",
+                "IQV", "IR", "IRM", "ISRG", "IT", "ITW", "IVZ", "J", "JBHT", "JCI", "JNJ",
+                "JNPR", "JPM", "K", "KDP", "KEY", "KEYS", "KHC", "KIM", "KLAC", "KMB", "KMI",
+                "KMX", "KO", "KR", "L", "LDOS", "LEN", "LH", "LHX", "LIN", "LKQ", "LLY",
+                "LMT", "LNC", "LNT", "LOW", "LRCX", "LUMN", "LUV", "LVS", "LW", "LYB", "LYV",
+                "MA", "MAA", "MAR", "MAS", "MCD", "MCHP", "MCK", "MCO", "MDLZ", "MDT", "MET",
+                "META", "MGM", "MHK", "MKC", "MKTX", "MLM", "MMC", "MMM", "MNST", "MO", "MOH",
+                "MOS", "MPC", "MPWR", "MRK", "MRNA", "MRO", "MS", "MSCI", "MSFT", "MSI", "MTB",
+                "MTCH", "MTD", "MU", "NCLH", "NDAQ", "NEE", "NEM", "NFLX", "NI", "NKE", "NOC",
+                "NOW", "NRG", "NSC", "NTAP", "NTRS", "NUE", "NVDA", "NVR", "NWL", "NWS", "NWSA",
+                "NXPI", "O", "ODFL", "OKE", "OMC", "ON", "ORCL", "ORLY", "OXY", "PARA", "PAYC",
+                "PAYX", "PCAR", "PCG", "PEAK", "PEG", "PEP", "PFE", "PFG", "PG", "PGR", "PH",
+                "PHM", "PKG", "PKI", "PLD", "PM", "PNC", "PNR", "PNW", "PODD", "POOL", "PPG",
+                "PPL", "PRU", "PSA", "PSX", "PTC", "PWR", "PXD", "PYPL", "QCOM", "QRVO", "RCL",
+                "RE", "REG", "REGN", "RF", "RHI", "RJF", "RL", "RMD", "ROK", "ROL", "ROP", "ROST",
+                "RSG", "RTX", "SBAC", "SBUX", "SCHW", "SEE", "SHW", "SJM", "SLB", "SNA", "SNPS",
+                "SO", "SPG", "SPGI", "SRE", "STE", "STT", "STX", "STZ", "SWK", "SWKS", "SYF", "SYK",
+                "SYY", "T", "TAP", "TDG", "TDY", "TECH", "TEL", "TER", "TFC", "TFX", "TGT", "TJX",
+                "TMO", "TMUS", "TPR", "TRGP", "TRMB", "TROW", "TRV", "TSCO", "TSLA", "TSN", "TT",
+                "TTWO", "TXN", "TXT", "TYL", "UAL", "UDR", "UHS", "ULTA", "UNH", "UNP", "UPS", "URI",
+                "USB", "V", "VFC", "VLO", "VMC", "VNO", "VRSK", "VRSN", "VRTX", "VTR", "VTRS", "VZ",
+                "WAB", "WAT", "WBA", "WBD", "WDC", "WEC", "WELL", "WFC", "WHR", "WM", "WMB", "WMT",
+                "WRB", "WRK", "WST", "WTW", "WY", "WYNN", "XEL", "XOM", "XRAY", "XYL", "YUM", "ZBH",
+                "ZBRA", "ZION", "ZTS"
+            ]
+
+# ------------------------------
+# 核心技术指标计算
 # ------------------------------
 def calculate_atr(data, period=14):
     high = data['High']
@@ -99,7 +245,7 @@ def find_zigzag(data, deviation=0.05):
     return zigzag
 
 # ------------------------------
-# 3. 增强版 Wyckoff 策略（不用改）
+# 增强版 Wyckoff 策略
 # ------------------------------
 def wyckoff_spring(data):
     if len(data) < 30: return False
@@ -142,7 +288,7 @@ def wyckoff_upthrust(data):
     return is_test_resistance and is_vol_spike and is_drop and is_confirm
 
 # ------------------------------
-# 4. 增强版 VCP 策略（不用改）
+# 增强版 VCP 策略
 # ------------------------------
 def vcp_volatility_contraction(data):
     if len(data) < 40: return False
@@ -176,32 +322,40 @@ def vcp_relative_strength(data, market_data):
     return rs > 0
 
 # ------------------------------
-# 5. 主选股逻辑（已添加价格筛选）
+# 主选股逻辑（新增得分计算+排序）
 # ------------------------------
-def run_screener(market, interval, lookback_days, strategies, min_price):
-    if market == "港股":
-        symbols = HANG_SENG_EXTENDED
-        market_ticker = "^HSI"
-    else:
-        symbols = SP500_PLUS_NASDAQ
-        market_ticker = "^GSPC"
+def run_screener(market, interval, lookback_days, strategies, min_price, only_positive):
+    # 1. 获取全市场符合价格的股票代码
+    st.info(f"正在拉取{market}全市场≥{min_price}元的个股列表...")
+    symbols = get_full_market_stocks(market, min_price)
+    st.success(f"成功获取到 {len(symbols)} 只符合价格要求的个股，开始筛选...")
     
+    # 2. 获取大盘基准数据
     end_date = datetime.now()
     start_date = end_date - timedelta(days=lookback_days)
-    
+    if market == "港股":
+        market_ticker = "^HSI"
+    else:
+        market_ticker = "^GSPC"
     market_data = yf.download(market_ticker, start=start_date, end=end_date, interval=interval)
-    results = []
     
+    results = []
     progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # 3. 遍历个股筛选+得分计算
     for idx, symbol in enumerate(symbols):
+        status_text.text(f"正在分析第 {idx+1}/{len(symbols)} 只：{symbol}")
         try:
-            data = yf.download(symbol, start=start_date, end=end_date, interval=interval)
+            # 拉取个股数据
+            data = yf.download(symbol, start=start_date, end=end_date, interval=interval, progress=False)
             if len(data) < 30: continue
             
-            # 【新增】价格筛选：只看≥min_price的股票
+            # 二次确认价格符合要求
             current_price = data['Close'].iloc[-1]
             if current_price < min_price: continue
             
+            # 计算形态信号
             data['zigzag'] = find_zigzag(data)
             signals = {}
             
@@ -216,30 +370,48 @@ def run_screener(market, interval, lookback_days, strategies, min_price):
                 signals['突破放量'] = vcp_breakout_volume(data)
                 signals['相对强势'] = vcp_relative_strength(data, market_data)
             
+            # 新增：计算综合买入匹配度得分
+            total_score = 0.0
+            score_detail = []
+            for signal_name, is_triggered in signals.items():
+                if is_triggered:
+                    score = SCORE_RULES[signal_name]
+                    total_score += score
+                    # 生成分数明细
+                    if score > 0:
+                        score_detail.append(f"{signal_name} +{score}分")
+                    else:
+                        score_detail.append(f"{signal_name} {score}分")
+            
+            # 过滤：只显示正分标的（如果开启）
+            if only_positive and total_score <= 0:
+                continue
+            
+            # 筛选符合条件的个股（至少2个信号）
             total_signals = sum(signals.values())
             if total_signals >= 2:
                 results.append({
                     "代码": symbol,
                     "最新价": round(current_price, 2),
+                    "综合匹配度得分": round(total_score, 1),
                     "信号数": total_signals,
                     "具体信号": ", ".join([k for k, v in signals.items() if v]),
+                    "得分明细": " | ".join(score_detail),
                     "数据": data
                 })
         except:
             continue
         
+        # 更新进度
         progress_bar.progress((idx + 1) / len(symbols))
     
-    return sorted(results, key=lambda x: x['信号数'], reverse=True)
+    status_text.empty()
+    # 核心：按综合得分从高到低排序
+    return sorted(results, key=lambda x: x['综合匹配度得分'], reverse=True)
 
 # ------------------------------
-# 6. 超简单网页界面
+# 网页界面（新增排序相关配置）
 # ------------------------------
-st.set_page_config(page_title="Wyckoff+VCP 选股器", layout="wide")
-st.title("🚀 Wyckoff + VCP 选股器")
-st.markdown("左侧选参数，点「开始筛选」即可，不用懂编程")
-
-# 侧边栏参数（更简单）
 with st.sidebar:
     st.header("⚙️ 筛选参数")
     market = st.selectbox("1. 选市场", ["港股", "美股"], index=0)
@@ -247,25 +419,42 @@ with st.sidebar:
     lookback_days = st.slider("3. 选回看天数", 30, 120, 60)
     min_price = st.number_input("4. 最低股价（港元/美元）", min_value=0.0, value=5.0, step=1.0)
     strategies = st.multiselect("5. 选策略（默认全选）", ["Wyckoff", "VCP"], default=["Wyckoff", "VCP"])
+    only_positive = st.checkbox("6. 只显示正分标的（推荐）", value=True)
     run_button = st.button("🔍 开始筛选", type="primary")
 
-# 主界面
+# 主界面执行逻辑
 if run_button:
     if not strategies:
-        st.warning("请至少选一个策略！")
+        st.warning("请至少选择一个策略！")
     else:
-        st.subheader("📊 正在筛选，请稍候（约1-3分钟）...")
-        results = run_screener(market, interval, lookback_days, strategies, min_price)
+        st.subheader("📊 全市场筛选进行中...")
+        st.markdown("⚠️ 全市场个股数量较多，筛选预计需要3-8分钟，请耐心等待，不要关闭页面")
+        results = run_screener(market, interval, lookback_days, strategies, min_price, only_positive)
         
         if not results:
             st.info("暂无符合条件的个股，建议调整参数或稍后再试")
         else:
-            st.subheader(f"✅ 找到 {len(results)} 只符合条件的个股（按信号数排序）")
+            # 显示得分说明
+            st.markdown(SCORE_GUIDE)
+            st.subheader(f"✅ 筛选完成！共找到 {len(results)} 只符合条件的个股（按买入匹配度从高到低排序）")
+            
+            # 遍历结果（已按得分排序）
             for res in results:
-                with st.expander(f"📈 {res['代码']} - 信号数：{res['信号数']} - 最新价：{res['最新价']}"):
-                    st.markdown(f"**具体信号**：{res['具体信号']}")
+                # 给不同得分设置不同的标题颜色
+                score = res['综合匹配度得分']
+                if score >= 8:
+                    title_color = "green"
+                elif score >=5:
+                    title_color = "orange"
+                else:
+                    title_color = "gray"
+                
+                with st.expander(f"📈 {res['代码']} | 综合得分：:{title_color}[{res['综合匹配度得分']}] | 最新价：{res['最新价']}"):
+                    st.markdown(f"**综合买入匹配度得分**：{res['综合匹配度得分']}")
+                    st.markdown(f"**得分明细**：{res['得分明细']}")
+                    st.markdown(f"**触发信号**：{res['具体信号']}")
                     
-                    # 画K线+成交量图
+                    # 绘制K线+成交量图
                     fig = go.Figure()
                     fig.add_trace(go.Candlestick(
                         x=res['数据'].index,
@@ -283,7 +472,7 @@ if run_button:
                         marker_color="rgba(0,0,255,0.3)"
                     ))
                     fig.update_layout(
-                        title=f"{res['代码']} 价格与成交量",
+                        title=f"{res['代码']} 价格与成交量走势",
                         yaxis_title="价格",
                         yaxis2=dict(title="成交量", overlaying="y", side="right"),
                         xaxis_rangeslider_visible=False
