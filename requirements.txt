@@ -1,5 +1,7 @@
-streamlit
-yfinance
-pandas
-numpy
-plotly
+streamlit>=1.30.0
+yfinance>=0.2.31
+pandas>=2.1.0
+numpy>=1.26.0
+plotly>=5.17.0
+yahooquery>=2.3.0
+requests>=2.31.0
